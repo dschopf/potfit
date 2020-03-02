@@ -197,8 +197,6 @@ def _check_enable_options(cnf):
     cnf.env.option_files = []
 
     # check for incompatible options
-    if cnf.options.enable_mpi and cnf.options.model == 'kim':
-        cnf.fatal('KIM does currently not support MPI parallelization')
     if cnf.options.enable_mpi and cnf.options.enable_bindist:
         cnf.fatal('bindist option is not supported for MPI-enabled builds')
     if cnf.options.enable_dsf and cnf.options.interaction not in ['ang_elstat', 'coulomb', 'eam_coulomb']:

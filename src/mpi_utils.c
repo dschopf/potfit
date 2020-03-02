@@ -31,6 +31,7 @@
 
 #include "config.h"
 #include "functions.h"
+#include "kim.h"
 #include "memory.h"
 #include "mpi_utils.h"
 #include "utils.h"
@@ -53,6 +54,9 @@ int broadcast_configurations();
 int broadcast_atoms();
 int broadcast_neighbors();
 int broadcast_angles();
+#if defined(KIM)
+int broadcast_kim();
+#endif  // KIM
 #endif  // MPI
 
 /****************************************************************
@@ -133,12 +137,17 @@ int broadcast_params_mpi()
 
   CHECK_RETURN(create_custom_datatypes());
   CHECK_RETURN(broadcast_basic_data());
+#if !defined(KIM)
   CHECK_RETURN(broadcast_calcpot_table());
+#endif  // !KIM
   CHECK_RETURN(broadcast_apot_table());
   CHECK_RETURN(broadcast_configurations());
   CHECK_RETURN(broadcast_atoms());
   CHECK_RETURN(broadcast_neighbors());
   CHECK_RETURN(broadcast_angles());
+#if defined(KIM)
+  CHECK_RETURN(broadcast_kim());
+#endif  // KIM
 
   if (g_mpi.myid == 0) {
     printf("done\n");
@@ -153,6 +162,9 @@ int broadcast_params_mpi()
 #if defined(STRESS)
   g_config.conf_us = g_config.usestress;
 #endif  // STRESS
+#if defined(KIM)
+  g_config.conf_particles = g_config.number_of_particles;
+#endif  // KIM
 #endif  // MPI
 
   return POTFIT_SUCCESS;
@@ -756,6 +768,19 @@ int broadcast_configurations()
                             MPI_COMM_WORLD));
 #endif  // STRESS
 
+#if defined(KIM)
+  g_config.conf_particles = (int*)Malloc(g_mpi.myconf * sizeof(int));
+
+  CHECK_RETURN(MPI_Scatterv(g_config.number_of_particles, g_mpi.conf_len, g_mpi.conf_dist,
+                            MPI_INT, g_config.conf_particles, g_mpi.myconf, MPI_INT, 0,
+                            MPI_COMM_WORLD));
+
+//   int** species_codes;
+//   int** particle_contributing;
+//   int** source_atom;
+//   double** coordinates;
+#endif  // KIM
+
   return MPI_SUCCESS;
 }
 
@@ -854,5 +879,78 @@ int broadcast_angles()
 
   return MPI_SUCCESS;
 }
+
+#if defined(KIM)
+
+/***************************************************************************
+    scatter KIM related data
+**************************************************************************/
+
+int broadcast_kim()
+{
+  int temp = g_mpi.myid == 0 ? strlen(g_kim.model_name) + 1 : 0;
+
+  CHECK_RETURN(MPI_Bcast(&temp, 1, MPI_INT, 0, MPI_COMM_WORLD));
+
+  if (g_mpi.myid != 0)
+    g_kim.model_name = (const char*)Malloc(temp * sizeof(char));
+
+  CHECK_RETURN(MPI_Bcast((void*)g_kim.model_name, temp, MPI_BYTE, 0, MPI_COMM_WORLD));
+
+  if (g_mpi.myid != 0)
+    g_config.elements = (const char**)Malloc(g_param.ntypes * sizeof(char*));
+
+  for (int i = 0; i < g_param.ntypes; ++i)
+  {
+    if (g_mpi.myid == 0)
+      temp = strlen(g_config.elements[i]) + 1;
+
+    CHECK_RETURN(MPI_Bcast(&temp, 1, MPI_INT, 0, MPI_COMM_WORLD));
+
+    if (g_mpi.myid != 0)
+      g_config.elements[i] = (const char*)Malloc(temp * sizeof(char));
+
+    CHECK_RETURN(MPI_Bcast((void*)g_config.elements[i], temp, MPI_BYTE, 0, MPI_COMM_WORLD));
+  }
+
+  if (g_mpi.myid != 0)
+    init_kim_model();
+
+  return MPI_SUCCESS;
+}
+
+// typedef struct {
+//   /// pointer to KIM model name
+//   const char* model_name;
+//   /// pointer to KIM model
+//   KIM_Model* model;
+//   /// pointers to compute arguments
+//   KIM_ComputeArguments** arguments;
+//   /// storage of compute helpers
+//   potfit_compute_helper_t* helpers;
+//   /// number of supported species
+//   int nspecies;
+//   /// name of species
+//   KIM_SpeciesName* species;
+//   /// mapping for potfit -> KIM species
+//   int* species_map;
+//   /// number of parameters in KIM model
+//   int nparams;
+//   /// number of parameters for optimization
+//   int total_params;
+//   /// parameters in KIM model
+//   kim_parameter_t* params;
+//   /// influence distance + cutoffs
+//   double* cutoffs;
+//   /// flags which routines are supported by the model
+//   int supported_routines;
+//   /// path for writing parameter file
+//   const char* output_directory;
+//   /// name for output model
+//   const char* output_name;
+// } potfit_kim;
+
+
+#endif  // KIM
 
 #endif  // MPI

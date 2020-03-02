@@ -80,10 +80,6 @@ int main(int argc, char** argv)
 
   g_mpi.init_done = 1;
 
-#if defined(KIM)
-  initialize_KIM();
-#endif // KIM
-
   switch (broadcast_params_mpi()) {
     case POTFIT_ERROR_MPI_CLEAN_EXIT:
       shutdown_mpi();
@@ -92,6 +88,10 @@ int main(int argc, char** argv)
       shutdown_mpi();
       return EXIT_FAILURE;
   }
+
+#if defined(KIM)
+  initialize_KIM();
+#endif // KIM
 
   g_calc.ndim = g_pot.opt_pot.idxlen;
   g_calc.ndimtot = g_pot.opt_pot.len;

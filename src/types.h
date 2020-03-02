@@ -392,6 +392,7 @@ typedef struct {
 
 #if defined(KIM)
   int* number_of_particles;
+  int* conf_particles;
   int** species_codes;
   int** particle_contributing;
   int** source_atom;

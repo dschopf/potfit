@@ -158,11 +158,11 @@ void check_KIM_model_support()
 #if defined(STRESS)
   int use_stress = 0;
 #endif
-  for (int j = 0; j < g_config.nconf; ++j) {
-    if (g_config.useforce[j])
+  for (int j = 0; j < g_mpi.myconf; ++j) {
+    if (g_config.conf_uf[j])
       use_forces = 1;
 #if defined(STRESS)
-    if (g_config.usestress[j])
+    if (g_config.conf_us[j])
       use_stress = 1;
     if (use_forces && use_stress)
 #else
@@ -225,11 +225,11 @@ void initialize_KIM()
   int res = 0;
 
   // Allocate memory for KIM compute arguments
-  g_kim.arguments = (KIM_ComputeArguments**)Malloc(g_config.nconf * sizeof(KIM_ComputeArguments*));
-  g_kim.helpers = (potfit_compute_helper_t*)Malloc(g_config.nconf * sizeof(potfit_compute_helper_t));
+  g_kim.arguments = (KIM_ComputeArguments**)Malloc(g_mpi.myconf * sizeof(KIM_ComputeArguments*));
+  g_kim.helpers = (potfit_compute_helper_t*)Malloc(g_mpi.myconf * sizeof(potfit_compute_helper_t));
 
   // TODO check for MPI compatibility
-  for (int i = 0; i < g_config.nconf; i++) {
+  for (int i = 0; i < g_mpi.myconf; i++) {
     res = KIM_Model_ComputeArgumentsCreate(g_kim.model, &g_kim.arguments[i]);
     if (res)
       error(1, "Error calling KIM_Model_ComputeArgumentsCreate: %d\n", res);
@@ -283,7 +283,7 @@ void initialize_KIM()
         error(1, "KIM model requires the following unsupported callback: %s\n", KIM_ComputeCallbackName_ToString(computeCallbackName));
     }
 
-    res = KIM_ComputeArguments_SetArgumentPointerInteger(g_kim.arguments[i], KIM_COMPUTE_ARGUMENT_NAME_numberOfParticles, g_config.number_of_particles + i);
+    res = KIM_ComputeArguments_SetArgumentPointerInteger(g_kim.arguments[i], KIM_COMPUTE_ARGUMENT_NAME_numberOfParticles, g_config.conf_particles + i);
     if (res)
       error(1, "Error setting numberOfParticles");
 
