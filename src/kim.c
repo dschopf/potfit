@@ -220,7 +220,8 @@ void check_KIM_model_support()
 
 void initialize_KIM()
 {
-  printf("\nInitializing KIM interface ...\n");
+  if (g_mpi.myid == 0)
+    printf("\nInitializing KIM interface ...\n");
 
   int res = 0;
 
@@ -301,14 +302,15 @@ void initialize_KIM()
 
     g_kim.helpers[i].config = i;
 
-    g_kim.helpers[i].forces = (double*)Malloc(3 * g_config.number_of_particles[i] * sizeof(double));
+    g_kim.helpers[i].forces = (double*)Malloc(3 * g_config.conf_particles[i] * sizeof(double));
 
     res = KIM_ComputeArguments_SetArgumentPointerDouble(g_kim.arguments[i], KIM_COMPUTE_ARGUMENT_NAME_partialForces, g_kim.helpers[i].forces);
     if (res)
       error(1, "Error setting forces!\n");
   }
 
-  printf("Initializing KIM interface ... done\n");
+  if (g_mpi.myid == 0)
+    printf("Initializing KIM interface ... done\n");
 }
 
 /******************************************************************************
@@ -318,7 +320,7 @@ void initialize_KIM()
 void shutdown_KIM()
 {
   if (g_kim.arguments) {
-    for(int i = 0; i < g_config.nconf; i++) {
+    for(int i = 0; i < g_mpi.myconf; i++) {
       if (g_kim.arguments[i])
         KIM_Model_ComputeArgumentsDestroy(g_kim.model, &g_kim.arguments[i]);
     }

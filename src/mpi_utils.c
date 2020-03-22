@@ -572,8 +572,10 @@ int broadcast_calcpot_table()
 
 int broadcast_apot_table()
 {
+#if defined(APOT) || defined(KIM)
 #if defined(APOT)
   CHECK_RETURN(MPI_Bcast(&g_param.enable_cp, 1, MPI_INT, 0, MPI_COMM_WORLD));
+#endif  // APOT
   CHECK_RETURN(MPI_Bcast(&g_pot.opt_pot.len, 1, MPI_INT, 0, MPI_COMM_WORLD));
   CHECK_RETURN(
       MPI_Bcast(&g_pot.apot_table.number, 1, MPI_INT, 0, MPI_COMM_WORLD));
@@ -582,6 +584,7 @@ int broadcast_apot_table()
       MPI_Bcast(&g_pot.apot_table.total_ne_par, 1, MPI_INT, 0, MPI_COMM_WORLD));
 #endif  // COULOMB
 
+#if defined(APOT)
   if (g_param.enable_cp) {
     if (g_mpi.myid > 0) {
       g_config.na_type = (int**)Malloc((g_config.nconf + 1) * sizeof(int*));
@@ -592,11 +595,16 @@ int broadcast_apot_table()
       CHECK_RETURN(MPI_Bcast(g_config.na_type[i], g_param.ntypes, MPI_INT, 0,
                              MPI_COMM_WORLD));
   }
+#endif  // APOT
 
   if (g_mpi.myid > 0) {
+#if defined(APOT)
     initialize_analytic_potentials();
+#endif  // APOT
 
+#if defined(APOT)
     g_pot.calc_list = (double*)Malloc(g_pot.opt_pot.len * sizeof(double));
+#endif  // APOT
     g_pot.apot_table.n_par =
         (int*)Malloc(g_pot.apot_table.number * sizeof(int));
     g_pot.apot_table.begin =
@@ -608,7 +616,9 @@ int broadcast_apot_table()
 #if defined(COULOMB)
     g_pot.apot_table.ratio = (double*)Malloc(g_param.ntypes * sizeof(double));
 #endif  // COULOMB
+#if defined(APOT)
     g_pot.smooth_pot = (int*)Malloc(g_pot.apot_table.number * sizeof(int));
+#endif  // APOT
     g_pot.invar_pot = (int*)Malloc(g_pot.apot_table.number * sizeof(int));
     g_config.rcut =
         (double*)Malloc(g_param.ntypes * g_param.ntypes * sizeof(double));
@@ -621,6 +631,7 @@ int broadcast_apot_table()
     g_pot.opt_pot.first = (int*)Malloc(g_pot.apot_table.number * sizeof(int));
   }
 
+#if !defined(KIM)
   // broadcast apot table names
   for (int i = 0; i < g_pot.apot_table.number; ++i) {
     size_t len = 0;
@@ -634,16 +645,23 @@ int broadcast_apot_table()
       CHECK_RETURN(MPI_Bcast(g_pot.apot_table.names[i], len + 1, MPI_CHAR, 0, MPI_COMM_WORLD));
     }
   }
+#endif  // !KIM
 
+#if defined(APOT)
   if (g_mpi.myid > 0)
     apot_assign_function_pointers(&g_pot.apot_table);
+#endif  // APOT
 
+#if defined(APOT)
   CHECK_RETURN(MPI_Bcast(g_pot.smooth_pot, g_pot.apot_table.number, MPI_INT, 0,
                          MPI_COMM_WORLD));
+#endif  // APOT
   CHECK_RETURN(MPI_Bcast(g_pot.invar_pot, g_pot.apot_table.number, MPI_INT, 0,
                          MPI_COMM_WORLD));
+#if defined(APOT)
   CHECK_RETURN(MPI_Bcast(g_pot.calc_list, g_pot.opt_pot.len, MPI_DOUBLE, 0,
                          MPI_COMM_WORLD));
+#endif  // APOT
   CHECK_RETURN(MPI_Bcast(g_pot.apot_table.n_par, g_pot.apot_table.number,
                          MPI_INT, 0, MPI_COMM_WORLD));
   CHECK_RETURN(MPI_Bcast(g_config.rcut, g_param.ntypes * g_param.ntypes,
@@ -656,7 +674,9 @@ int broadcast_apot_table()
                          MPI_DOUBLE, 0, MPI_COMM_WORLD));
   CHECK_RETURN(MPI_Bcast(g_pot.apot_table.idxpot, g_pot.apot_table.number,
                          MPI_INT, 0, MPI_COMM_WORLD));
+#if defined(APOT)
   CHECK_RETURN(MPI_Bcast(&g_pot.cp_start, 1, MPI_INT, 0, MPI_COMM_WORLD));
+#endif  // APOT
   CHECK_RETURN(MPI_Bcast(&g_pot.have_globals, 1, MPI_INT, 0, MPI_COMM_WORLD));
   CHECK_RETURN(MPI_Bcast(&g_pot.global_idx, 1, MPI_INT, 0, MPI_COMM_WORLD));
   CHECK_RETURN(
@@ -692,7 +712,7 @@ int broadcast_apot_table()
         CHECK_RETURN(MPI_Bcast(g_pot.apot_table.global_idx[i][j], 2, MPI_INT, 0,
                                MPI_COMM_WORLD));
   }
-#endif  // APOT
+#endif  // APOT || KIM
 
   return MPI_SUCCESS;
 }
@@ -769,16 +789,72 @@ int broadcast_configurations()
 #endif  // STRESS
 
 #if defined(KIM)
+  if (g_mpi.myid != 0)
+    g_config.number_of_particles = (int*)Malloc(g_config.nconf * sizeof(int));
+
+  CHECK_RETURN(MPI_Bcast(g_config.number_of_particles, g_config.nconf, MPI_INT, 0, MPI_COMM_WORLD));
+
   g_config.conf_particles = (int*)Malloc(g_mpi.myconf * sizeof(int));
 
   CHECK_RETURN(MPI_Scatterv(g_config.number_of_particles, g_mpi.conf_len, g_mpi.conf_dist,
                             MPI_INT, g_config.conf_particles, g_mpi.myconf, MPI_INT, 0,
                             MPI_COMM_WORLD));
 
-//   int** species_codes;
-//   int** particle_contributing;
-//   int** source_atom;
-//   double** coordinates;
+  // allocate memory on slaves
+
+  if (g_mpi.myid != 0)
+  {
+    g_config.species_codes = (int**)Malloc(g_mpi.myconf * sizeof(int*));
+    g_config.particle_contributing = (int**)Malloc(g_mpi.myconf * sizeof(int*));
+    g_config.source_atom = (int**)Malloc(g_mpi.myconf * sizeof(int*));
+    g_config.coordinates = (double**)Malloc(g_mpi.myconf * sizeof(double*));
+
+    for (int i = 0; i < g_mpi.myconf; ++i)
+    {
+      g_config.species_codes[i] = (int*)Malloc(g_config.conf_particles[i] * sizeof(int));
+      g_config.particle_contributing[i] = (int*)Malloc(g_config.conf_particles[i] * sizeof(int));
+      g_config.source_atom[i] = (int*)Malloc(g_config.conf_particles[i] * sizeof(int));
+      g_config.coordinates[i] = (double*)Malloc(3 * g_config.conf_particles[i] * sizeof(double));
+    }
+  }
+
+  int temp1 = 0;
+  int temp2 = 0;
+  int temp3 = 0;
+  double temp4 = 0.0;
+  double temp5 = 0.0;
+  double temp6 = 0.0;
+
+  for (int i = 0; i < g_config.nconf; ++i)
+  {
+    for (int j = 0; j < g_config.number_of_particles[i]; ++j)
+    {
+      if (g_mpi.myid == 0) {
+        temp1 = g_config.species_codes[i][j];
+        temp2 = g_config.particle_contributing[i][j];
+        temp3 = g_config.source_atom[i][j];
+        temp4 = g_config.coordinates[i][3 * j];
+        temp5 = g_config.coordinates[i][3 * j + 1];
+        temp6 = g_config.coordinates[i][3 * j + 2];
+      }
+
+      CHECK_RETURN(MPI_Bcast(&temp1, 1, MPI_INT, 0, MPI_COMM_WORLD));
+      CHECK_RETURN(MPI_Bcast(&temp2, 1, MPI_INT, 0, MPI_COMM_WORLD));
+      CHECK_RETURN(MPI_Bcast(&temp3, 1, MPI_INT, 0, MPI_COMM_WORLD));
+      CHECK_RETURN(MPI_Bcast(&temp4, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD));
+      CHECK_RETURN(MPI_Bcast(&temp5, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD));
+      CHECK_RETURN(MPI_Bcast(&temp6, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD));
+
+      if (g_mpi.myid != 0 && i >= g_mpi.firstconf && i <= (g_mpi.firstconf + g_mpi.myconf)) {
+        g_config.species_codes[i - g_mpi.firstconf][j] = temp1;
+        g_config.particle_contributing[i - g_mpi.firstconf][j] = temp2;
+        g_config.source_atom[i - g_mpi.firstconf][j] = temp3;
+        g_config.coordinates[i - g_mpi.firstconf][3 * j] = temp4;
+        g_config.coordinates[i - g_mpi.firstconf][3 * j + 1] = temp5;
+        g_config.coordinates[i - g_mpi.firstconf][3 * j + 2] = temp6;
+      }
+    }
+  }
 #endif  // KIM
 
   return MPI_SUCCESS;
@@ -814,6 +890,11 @@ int broadcast_neighbors()
   int num_neighs = 0;
   neigh_t neigh;
   atom_t* atom = NULL;
+#if defined(KIM)
+  int max_neigh = 0;
+  // allocate temporary buffer on nodes
+  int* buffer = NULL;
+#endif  // KIM
 
   memset(&neigh, 0, sizeof(neigh));
 
@@ -822,11 +903,12 @@ int broadcast_neighbors()
     if (g_mpi.myid == 0)
       num_neighs = g_config.atoms[i].num_neigh;
     CHECK_RETURN(MPI_Bcast(&num_neighs, 1, MPI_INT, 0, MPI_COMM_WORLD));
+#if defined(KIM)
+    max_neigh = max(num_neighs, max_neigh);
+#endif  // KIM
     if (num_neighs > 0 && i >= g_mpi.firstatom &&
         i < (g_mpi.firstatom + g_mpi.myatoms)) {
       atom->neigh = (neigh_t*)Malloc(num_neighs * sizeof(neigh_t));
-      for (int j = 0; j < num_neighs; ++j)
-        memset(atom->neigh + j, 0, sizeof(neigh_t));
     }
     for (int j = 0; j < num_neighs; ++j) {
       if (g_mpi.myid == 0)
@@ -836,6 +918,31 @@ int broadcast_neighbors()
         atom->neigh[j] = neigh;
     }
   }
+
+#if defined(KIM)
+  if (g_mpi.myid != 0) {
+    buffer = (int*)malloc(max_neigh * sizeof(int));
+    if (!buffer)
+      error(1, "Error allocating MPI neighbor buffer");
+  }
+
+  for (int i = 0; i < g_config.natoms; ++i) {
+    atom = g_config.conf_atoms + i - g_mpi.firstatom;
+    if (g_mpi.myid == 0) {
+      buffer = g_config.atoms[i].kim_neighbors;
+      num_neighs = g_config.atoms[i].num_neigh;
+    }
+    CHECK_RETURN(MPI_Bcast(&num_neighs, 1, MPI_INT, 0, MPI_COMM_WORLD));
+    CHECK_RETURN(MPI_Bcast(buffer, num_neighs, MPI_INT, 0, MPI_COMM_WORLD));
+    if (g_mpi.myid != 0 && i >= g_mpi.firstatom && i < (g_mpi.firstatom + g_mpi.myatoms)) {
+      atom->kim_neighbors = (int*)Malloc(num_neighs * sizeof(int));
+      memcpy(atom->kim_neighbors, buffer, num_neighs * sizeof(int));
+    }
+  }
+
+  if (g_mpi.myid != 0)
+    free(buffer);
+#endif  // KIM
 
   return MPI_SUCCESS;
 }
@@ -913,43 +1020,18 @@ int broadcast_kim()
     CHECK_RETURN(MPI_Bcast((void*)g_config.elements[i], temp, MPI_BYTE, 0, MPI_COMM_WORLD));
   }
 
+  CHECK_RETURN(MPI_Bcast(&g_kim.num_cutoffs, 1, MPI_INT, 0, MPI_COMM_WORLD));
+
+  if (g_mpi.myid != 0)
+    g_kim.cutoffs = (double*)Malloc(g_kim.num_cutoffs * sizeof(double));
+
+  CHECK_RETURN(MPI_Bcast(g_kim.cutoffs, g_kim.num_cutoffs, MPI_DOUBLE, 0, MPI_COMM_WORLD));
+
   if (g_mpi.myid != 0)
     init_kim_model();
 
   return MPI_SUCCESS;
 }
-
-// typedef struct {
-//   /// pointer to KIM model name
-//   const char* model_name;
-//   /// pointer to KIM model
-//   KIM_Model* model;
-//   /// pointers to compute arguments
-//   KIM_ComputeArguments** arguments;
-//   /// storage of compute helpers
-//   potfit_compute_helper_t* helpers;
-//   /// number of supported species
-//   int nspecies;
-//   /// name of species
-//   KIM_SpeciesName* species;
-//   /// mapping for potfit -> KIM species
-//   int* species_map;
-//   /// number of parameters in KIM model
-//   int nparams;
-//   /// number of parameters for optimization
-//   int total_params;
-//   /// parameters in KIM model
-//   kim_parameter_t* params;
-//   /// influence distance + cutoffs
-//   double* cutoffs;
-//   /// flags which routines are supported by the model
-//   int supported_routines;
-//   /// path for writing parameter file
-//   const char* output_directory;
-//   /// name for output model
-//   const char* output_name;
-// } potfit_kim;
-
 
 #endif  // KIM
 

@@ -171,16 +171,24 @@ double calc_forces(double *xi_opt, double *forces, int flag)
     g_mpi.myconf = g_config.nconf;
 #endif // MPI
 
+#if defined(MPI)
+    MPI_Bcast(&flag, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    if (flag == 1)
+      break; // Exception: flag 1 means clean up
+
+    MPI_Bcast(xi_opt, g_calc.ndimtot, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+#endif  // MPI
+
     update_kim_model(xi_opt);
 
     // loop over configurations
     for (int h = g_mpi.firstconf; h < g_mpi.firstconf + g_mpi.myconf; h++) {
       double kim_energy = 0.0;
-      int ret = KIM_ComputeArguments_SetArgumentPointerDouble(g_kim.arguments[h], KIM_COMPUTE_ARGUMENT_NAME_partialEnergy, &kim_energy);
+      int ret = KIM_ComputeArguments_SetArgumentPointerDouble(g_kim.arguments[h - g_mpi.firstconf], KIM_COMPUTE_ARGUMENT_NAME_partialEnergy, &kim_energy);
       if (ret)
         error(1, "Error setting energy pointer\n");
 
-      double* kim_forces = g_kim.helpers[h].forces;
+      double* kim_forces = g_kim.helpers[h - g_mpi.firstconf].forces;
       int uf = g_config.conf_uf[h - g_mpi.firstconf];
       // forces pointer has already been set when setting up the compute argument
 
@@ -188,7 +196,7 @@ double calc_forces(double *xi_opt, double *forces, int flag)
       double virial[6] = {0};
       int us = g_config.conf_us[h - g_mpi.firstconf];
       if (us) {
-        int ret = KIM_ComputeArguments_SetArgumentPointerDouble(g_kim.arguments[h], KIM_COMPUTE_ARGUMENT_NAME_partialVirial, virial);
+        int ret = KIM_ComputeArguments_SetArgumentPointerDouble(g_kim.arguments[h - g_mpi.firstconf], KIM_COMPUTE_ARGUMENT_NAME_partialVirial, virial);
         if (ret)
           error(1, "Error setting virial pointer\n");
       }
@@ -196,7 +204,7 @@ double calc_forces(double *xi_opt, double *forces, int flag)
 
       // Calculate forces from KIM (general forces, including forces, virial and energy)
 
-      ret = KIM_Model_Compute(g_kim.model, g_kim.arguments[h]);
+      ret = KIM_Model_Compute(g_kim.model, g_kim.arguments[h - g_mpi.firstconf]);
       if (ret)
         error(1, "Error calling KIM_Model_Compute\n");
 
@@ -206,7 +214,7 @@ double calc_forces(double *xi_opt, double *forces, int flag)
       // gather all KIM mirror image contributions
 
       for (int i = 0; i < g_config.number_of_particles[h]; ++i) {
-        int idx = 3 * g_config.source_atom[h][i];
+        int idx = 3 * g_config.source_atom[h - g_mpi.firstconf][i];
         forces[idx + 0] += kim_forces[3 * i + 0];
         forces[idx + 1] += kim_forces[3 * i + 1];
         forces[idx + 2] += kim_forces[3 * i + 2];
@@ -316,13 +324,13 @@ int get_neigh(const void* const puser,
 {
   potfit_compute_helper_t* helper = (potfit_compute_helper_t*)puser;
 
-  if (particleNumber > g_config.inconf[helper->config])
+  if (particleNumber > g_config.inconf[g_mpi.firstconf + helper->config])
     error(1, "KIM get_neigh function requested a neighbor list for padding atoms which is not supported!\n");
 
-  const int atom_idx = g_config.cnfstart[helper->config] + particleNumber;
+  const int atom_idx = g_config.cnfstart[g_mpi.firstconf + helper->config] + particleNumber - g_mpi.firstatom;
 
-  *numberOfNeighbors = g_config.atoms[atom_idx].num_neigh;
-  *neighborsOfParticle = g_config.atoms[atom_idx].kim_neighbors;
+  *numberOfNeighbors = g_config.conf_atoms[atom_idx].num_neigh;
+  *neighborsOfParticle = g_config.conf_atoms[atom_idx].kim_neighbors;
 
   return 0;
 }

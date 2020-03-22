@@ -392,6 +392,8 @@ double read_max_cutoff()
     g_kim.cutoffs[i] = cutoffs[i];
   }
 
+  g_kim.num_cutoffs = num_lists + 1;
+
   return max_cutoff;
 }
 

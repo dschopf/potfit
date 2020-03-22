@@ -601,6 +601,8 @@ typedef struct {
   kim_parameter_t* params;
   /// influence distance + cutoffs
   double* cutoffs;
+  /// number of cutoffs
+  int num_cutoffs;
   /// flags which routines are supported by the model
   int supported_routines;
   /// path for writing parameter file
